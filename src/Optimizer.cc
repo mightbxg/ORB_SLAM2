@@ -1,4 +1,4 @@
-﻿/**
+/**
 * This file is part of ORB-SLAM2.
 *
 * Copyright (C) 2014-2016 Raúl Mur-Artal <raulmur at unizar dot es> (University of Zaragoza)
@@ -38,6 +38,9 @@ namespace ORB_SLAM2
 {
 
 
+// 全局光束法平差 (Global Bundle Adjustment)。
+// 这是一个极其耗时的过程对象，它会优化地图中*所有*的关键帧位姿和*所有*的地图点。
+// 通过 g2o 建立复杂的非线性最小二乘问题，边是 3D-2D 的重投影误差 (Reprojection Error)。
 void Optimizer::GlobalBundleAdjustemnt(Map* pMap, int nIterations, bool* pbStopFlag, const unsigned long nLoopKF, const bool bRobust)
 {
     vector<KeyFrame*> vpKFs = pMap->GetAllKeyFrames();
@@ -236,6 +239,10 @@ void Optimizer::BundleAdjustment(const vector<KeyFrame *> &vpKFs, const vector<M
 
 }
 
+// 相机位姿优化 (Pose Optimization)，也可以理解为图优化形式的 3D-2D PnP 求解。
+// 该函数仅将当前帧的位姿(R, t，即 g2o::VertexSE3Expmap )设为可优化的图顶点。
+// 同时将它观测到的三维地图点 (MapPoints) 固定不变。利用这两者计算出来的重投影误差进行 4 次 Levenberg-Marquardt 迭代优化。
+// 迭代中利用 Huber 鲁棒核函数来大幅降低被错误匹配的点 (Outliers) 对目标函数的影响，并在结束时统计内点数。
 int Optimizer::PoseOptimization(Frame *pFrame)
 {
     g2o::SparseOptimizer optimizer;
@@ -450,6 +457,12 @@ int Optimizer::PoseOptimization(Frame *pFrame)
     return nInitialCorrespondences-nBad;
 }
 
+// 局部光束法平差 (Local Bundle Adjustment, 简称 Local BA)。
+// 当新的关键帧生成时被 Local Mapping 线程调用。
+// 图优化模型包含：
+// 1. Local KeyFrames: 当前关键帧及其在 Covisibility Graph 的前几级共视关键帧，设为自由态（可被优化）。
+// 2. Local MapPoints: 上述所有的 Local KeyFrames 所观测到的全部 3D 地图点，设为自由态（可被优化）。
+// 3. Fixed KeyFrames: 也观测到了 Local MapPoints 但不属于 Local KeyFrames 的邻居相机节点。它们被添加到优化图中以提供约束，但是顶点被设为固定态（Fixed=true，不被优化）。
 void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap)
 {    
     // Local KeyFrames: First Breath Search from Current Keyframe

@@ -54,6 +54,11 @@ void LoopClosing::SetLocalMapper(LocalMapping *pLocalMapper)
 }
 
 
+// 回环检测线程主循环 (Loop Closing Thread Main Loop)。
+// 这是一个长期运行的后台线程，主要目标是消除累积误差（特别是单目的尺度漂移）。
+// 1. 闭环候选检测 (DetectLoop): 使用词袋 (BoW) 在数据库中检索与当前关键帧相似度极高的历史关键帧。
+// 2. 计算 Sim3 变换 (ComputeSim3): 针对候选闭环，基于RANSAC和特征点匹配计算包含尺度缩放因子s的Sim3变换矩阵。
+// 3. 闭环融合与优化 (CorrectLoop): 利用计算出的 Sim3 修正当前帧、其共视关键帧及地图点；随后构建本质图(Essential Graph)进行位姿图优化，最终开启一个独立线程执行全局 BA (Global BA)。
 void LoopClosing::Run()
 {
     mbFinished =false;

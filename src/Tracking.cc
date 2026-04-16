@@ -264,6 +264,12 @@ cv::Mat Tracking::GrabImageMonocular(const cv::Mat &im, const double &timestamp)
     return mCurrentFrame.mTcw.clone();
 }
 
+// 追踪线程主函数 (Tracking State Machine)。
+// 包含四个核心部分：
+// 1. 初始化 (单目/双目/RGBD 初始化)
+// 2. 估计初始位姿 (按优先级：TrackWithMotionModel -> TrackReferenceKeyFrame -> 重定位 Relocalization)
+// 3. 跟踪局部地图 (TrackLocalMap)，利用更多局部点优化当前位姿
+// 4. 判断并生成关键帧 (NeedNewKeyFrame 与 CreateNewKeyFrame)
 void Tracking::Track()
 {
     if(mState==NO_IMAGES_YET)
@@ -754,6 +760,9 @@ void Tracking::CheckReplacedInLastFrame()
 }
 
 
+// 参考帧跟踪：当运动模型速度未建立，或是运动模型跟踪失败时，调用此函数。
+// 核心思想：直接用上一帧（或参考关键帧）的位姿作为当前帧的初始位姿，通过词袋模版 (BoW)
+// 将当前帧的特征点与参考帧的地图点进行匹配，然后进行 PnP 的非线性优化 (PoseOptimization)。
 bool Tracking::TrackReferenceKeyFrame()
 {
     // Compute Bag of Words vector
@@ -864,6 +873,9 @@ void Tracking::UpdateLastFrame()
     }
 }
 
+// 基于恒速运动模型跟踪：假设相机做匀速且平滑运动，根据前两帧之间的变换矩阵 (mVelocity)
+// 预测出当前帧的位姿。然后将上一帧观测到的地图点投影到当前帧上进行匹配搜索。
+// 获得匹配后，运行 Optimize::PoseOptimization() 优化相机位姿。这是正常跟踪中最常用的高效方法。
 bool Tracking::TrackWithMotionModel()
 {
     ORBmatcher matcher(0.9,true);
@@ -927,6 +939,9 @@ bool Tracking::TrackWithMotionModel()
     return nmatchesMap>=10;
 }
 
+// 局部地图跟踪：在前一步(恒速模型或参考帧跟踪)得到初步位姿的基础之上，
+// 提取出一个局部地图 (包含共视关键帧及其周围的 MapPoints)。
+// 将局部地图中的点投影到当前帧寻找更多匹配，最后进行极其精细的相机位姿优化 (PoseOptimization)。
 bool Tracking::TrackLocalMap()
 {
     // We have an estimation of the camera pose and some map points tracked in the frame.

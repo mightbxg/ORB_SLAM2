@@ -83,14 +83,22 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
 
     //Initialize the Tracking thread
     //(it will live in the main thread of execution, the one that called this constructor)
+    // 1. 初始化追踪线程 (Tracking)。它直接运行在主线程中（非独立的新线程）。
+    // Tracking 线程负责：ORB特征提取、通过帧间匹配或重定位进行初始位姿估计、跟踪局部地图、以及决定是否生成新的关键帧。
     mpTracker = new Tracking(this, mpVocabulary, mpFrameDrawer, mpMapDrawer,
                              mpMap, mpKeyFrameDatabase, strSettingsFile, mSensor);
 
     //Initialize the Local Mapping thread and launch
+    // 2. 初始化并启动局部建图线程 (Local Mapping, 独立线程)。
+    // 本线程主要负责：将新关键帧插入地图、创建新的地图点 (MapPoints)、剔除冗余的关键帧和地图点、
+    // 并通过局部光束法平差 (Local Bundle Adjustment) 优化局部地图。
     mpLocalMapper = new LocalMapping(mpMap, mSensor==MONOCULAR);
     mptLocalMapping = new thread(&ORB_SLAM2::LocalMapping::Run,mpLocalMapper);
 
     //Initialize the Loop Closing thread and launch
+    // 3. 初始化并启动回环检测线程 (Loop Closing, 独立线程)。
+    // 本线程主要负责：检测长期闭环 (Loop Detection)、计算当前帧与闭环帧之间的Sim3变换（以修正纯单目产生的尺度漂移）、
+    // 进行闭环融合 (Loop Fusion)、并在本质图 (Essential Graph) 上执行全局位姿图优化 (Pose Graph Optimization)。
     mpLoopCloser = new LoopClosing(mpMap, mpKeyFrameDatabase, mpVocabulary, mSensor!=MONOCULAR);
     mptLoopClosing = new thread(&ORB_SLAM2::LoopClosing::Run, mpLoopCloser);
 
@@ -155,6 +163,8 @@ cv::Mat System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, const
     }
     }
 
+    // 双目模式核心跟踪入口。将当前双目图像输入到 Tracker。
+    // 返回的 Tcw 为 Camera-to-World 的变换矩阵： x_camera = R_cw * x_world + t_cw
     cv::Mat Tcw = mpTracker->GrabImageStereo(imLeft,imRight,timestamp);
 
     unique_lock<mutex> lock2(mMutexState);
@@ -206,6 +216,8 @@ cv::Mat System::TrackRGBD(const cv::Mat &im, const cv::Mat &depthmap, const doub
     }
     }
 
+    // RGB-D 模式核心跟踪入口。将当前 RGB 图像与深度图输入到 Tracker。
+    // 返回当前相机的位姿 Tcw。
     cv::Mat Tcw = mpTracker->GrabImageRGBD(im,depthmap,timestamp);
 
     unique_lock<mutex> lock2(mMutexState);
@@ -257,6 +269,8 @@ cv::Mat System::TrackMonocular(const cv::Mat &im, const double &timestamp)
     }
     }
 
+    // 单目模式核心跟踪入口。将当前单幅图像传入 Tracker 线程。
+    // 返回值 Tcw 是当前相机的外参，包含了旋转矩阵 R 和平移向量 t。
     cv::Mat Tcw = mpTracker->GrabImageMonocular(im,timestamp);
 
     unique_lock<mutex> lock2(mMutexState);

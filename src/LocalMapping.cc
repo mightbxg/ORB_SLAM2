@@ -44,6 +44,13 @@ void LocalMapping::SetTracker(Tracking *pTracker)
     mpTracker=pTracker;
 }
 
+// 局部建图线程主循环 (Local Mapping Thread Main Loop)。
+// 该线程独立运行，持续检查是否有新的关键帧插入，如果有，则执行以下核心步骤：
+// 1. ProcessNewKeyFrame(): 计算BoW，并在局部地图中插入新关键帧。
+// 2. MapPointCulling(): 剔除质量不好的近期生成的地图点。
+// 3. CreateNewMapPoints(): 结合共视区域内的关键帧，通过三角化 (Triangulation) 生成新的地图点。
+// 4. LocalBundleAdjustment(): 局部光束法平差，优化当前帧、共视关键帧及其相连的地图点。
+// 5. KeyFrameCulling(): 剔除冗余的关键帧，保持系统的高效运行。
 void LocalMapping::Run()
 {
 
